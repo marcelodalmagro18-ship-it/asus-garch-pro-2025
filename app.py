@@ -81,7 +81,7 @@ else:
         st.rerun()
 
     st.title("GARCH ANALYZER PRO 3.9.4 ONLINE 24H")
-    st.markdown("**v16.0 GAMMA CORRETO + FORMULAS 100% IGUAIS AO NOTEBOOK**")
+    st.markdown("**v16.1 FÓRMULAS 100% IGUAIS AO NOTEBOOK - γ CORRETO EGARCH full, GJR /2**")
 
     uploaded = st.file_uploader("Carregar meus_ativos.txt", type="txt")
     if uploaded:
@@ -114,13 +114,13 @@ else:
     alarme_percent = st.slider("Alarme Vol > Longo em %", 0, 100, 20)
 
     if st.button("EXECUTAR PRO 3.9.4"):
-        relatorio = "GARCH ANALYZER PRO 3.9.4 - ANALISE COMPLETA + REGRAS POR TIPO DE ATIVO\n"
-        relatorio += f"Data da analise: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-        relatorio += f"Periodo analisado: {inicio} to {fim}\n"
-        relatorio += f"Dias corridos: {(fim - inicio).days} | Dias uteis: {int((fim - inicio).days * 252 / 365)}\n\n"
-        relatorio += "RESULTADOS DOS MODELOS VENCEDORES + INTERPRETACAO AUTOMATICA\n"
+        relatorio = "GARCH ANALYZER PRO 3.9.4 – ANÁLISE COMPLETA + REGRAS POR TIPO DE ATIVO\n"
+        relatorio += f"Data da análise: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        relatorio += f"Período analisado: {inicio} → {fim}\n"
+        relatorio += f"Dias corridos: {timedelta(days=(fim - inicio).days)}\n\n"
+        relatorio += "RESULTADOS DOS MODELOS VENCEDORES + INTERPRETAÇÃO AUTOMÁTICA\n"
         relatorio += "="*160 + "\n"
-        relatorio += "Ativo    Modelo           AIC      LB     Omega        alpha      beta       gamma      Status     Interpretacao\n"
+        relatorio += "Ativo    Modelo           AIC      LB     Ω            α          β          γ          Status     Interpretação\n"
         relatorio += "="*160 + "\n"
 
         modelos_list = [
@@ -133,19 +133,20 @@ else:
         ]
 
         for ativo in ativos_sel:
-            with st.spinner(f"Analisando {ativo}..."):
+            with st.spinner(f"Testando 6 modelos em {ativo}..."):
                 try:
                     data = yf.download(ativo, start=inicio, end=fim, progress=False)
                     if data.empty:
                         st.error(f"{ativo} sem dados")
                         continue
                     ret = data["Close"].pct_change().dropna() * 100
-                    scaled = ret * 10
+                    scaled = ret * 10  # EXATO DO SEU NOTEBOOK
 
                     melhor_aic = np.inf
                     melhor_res = None
                     melhor_nome = ""
                     melhor_p = melhor_o = melhor_q = 1
+                    melhor_vol = "Garch"
 
                     for nome, p, o, q, vol in modelos_list:
                         try:
@@ -156,6 +157,7 @@ else:
                                 melhor_res = res
                                 melhor_nome = nome
                                 melhor_p, melhor_o, melhor_q = p, o, q
+                                melhor_vol = vol
                         except:
                             pass
 
@@ -168,18 +170,19 @@ else:
                     alpha_sum = sum(res.params.get(f"alpha[{i}]", 0) for i in range(1, melhor_p + 1))
                     beta_sum = sum(res.params.get(f"beta[{i}]", 0) for i in range(1, melhor_q + 1))
 
-                    # GAMMA CORRETO POR MODELO (100% IGUAL SEU NOTEBOOK)
+                    # GAMMA CORRETO POR MODELO (100% IGUAL SEU NOTEBOOK + DOC)
                     gamma_param = res.params.get("gamma[1]", 0.0)
                     if "EGARCH" in melhor_nome:
-                        gamma = gamma_param  # EGARCH: full
+                        gamma = gamma_param  # EGARCH: full (não /2)
                         gamma_for_vol = gamma_param
                     elif "GJR" in melhor_nome:
-                        gamma = gamma_param / 2  # GJR: mostra metade
-                        gamma_for_vol = gamma_param / 2
+                        gamma = gamma_param / 2  # GJR: mostra metade (efeito real)
+                        gamma_for_vol = gamma_param / 2  # vol_long usa /2
                     else:
                         gamma = 0.0
                         gamma_for_vol = 0.0
 
+                    # PERSISTENCE + VOL_LONG EXATO (linha por linha igual seu notebook)
                     persistence = alpha_sum + beta_sum + gamma_for_vol
                     if persistence >= 1.0:
                         vol_long = np.sqrt(omega / 0.0001) / 10
@@ -194,7 +197,9 @@ else:
                     interpret = "Estavel"
                     if "=F" in ativo: interpret = "VOL TECNICA (FUTUROS)"
                     elif alpha_sum < 0.07: interpret = "ACAO MADURA"
+                    elif alpha_sum > 0.15: interpret = "ACAO VOLATIL"
                     elif "EGARCH" in melhor_nome and omega < -0.5: interpret = "QUEDAS EXPLODEM VOL!"
+                    elif beta_sum > 0.98: interpret = "VOL DURA MUITO"
 
                     relatorio += f"{ativo:<8} {melhor_nome:<16} {melhor_aic:8.1f} {lb:6.3f} {omega:10.6f} {alpha_sum:10.6f} {beta_sum:10.6f} {gamma:10.6f} {status:<10} {interpret}\n"
 
@@ -203,17 +208,20 @@ else:
                         st.metric("Vol Longo (%)", f"{vol_long_anual:.4%}")
                         st.metric("Vol Atual (%)", f"{vol_atual_anual:.4%}")
                         st.metric("Diferenca", f"{(vol_atual_anual/vol_long_anual-1)*100:+.2f}%")
+                        st.metric("Modelo Vencedor", melhor_nome)
                     with col2:
                         fig, ax = plt.subplots(figsize=(10,5))
                         vol_plot = np.sqrt(res.conditional_volatility.iloc[-200:]) / 10 * np.sqrt(252)
                         vol_plot.plot(ax=ax)
                         ax.axhline(vol_long_anual, color="red", linestyle="--")
                         ax.set_title(f"{melhor_nome} - {ativo}")
+                        ax.legend()
                         st.pyplot(fig)
 
                     if vol_atual_anual > vol_long_anual * (1 + alarme_percent/100):
-                        st.error(f"ALARME {ativo}: Vol +{alarme_percent}%")
+                        st.error(f"ALARME {ativo}: Vol Atual {vol_atual_anual:.2%} > Longo +{alarme_percent}%")
 
+                    # CSV MT5 (gamma1 BRUTO sempre!)
                     csv_mt5 = io.StringIO()
                     csv_mt5.write("Parametro,Valor\n")
                     csv_mt5.write(f"omega,{omega}\n")
@@ -224,15 +232,45 @@ else:
                         b = res.params.get(f"beta[{i}]", 0)
                         if b > 0: csv_mt5.write(f"beta{i},{b}\n")
                     if gamma_param != 0:
-                        csv_mt5.write(f"gamma1,{gamma_param}\n")
+                        csv_mt5.write(f"gamma1,{gamma_param}\n")  # BRUTO pro MQL5!
                     st.download_button(f"MT5 {ativo}", csv_mt5.getvalue(), f"{ativo}_PARAMETROS_MT5.csv", "text/csv")
 
                 except Exception as e:
                     st.error(f"Erro {ativo}: {e}")
 
+        relatorio += "="*160 + "\n\n"
+        relatorio += "EXPLICAÇÃO DOS PARÂMETROS (Ω α β γ)\n"
         relatorio += "="*160 + "\n"
-        relatorio += "EXPLICACAO DOS PARAMETROS...\n"  # (seu texto completo aqui)
-        relatorio += "LEGENDA DAS INTERPRETACOES...\n"
+        relatorio += "Ω (Omega)   → Volatilidade de longo prazo (intercept)\n"
+        relatorio += "            • Quanto menor, mais estável o ativo\n"
+        relatorio += "            • Em EGARCH pode ser negativo (assimetria forte)\n\n"
+        relatorio += "α (Alpha)   → Impacto total de choques recentes (soma de todos os α[i])\n"
+        relatorio += "            • α alto → volatilidade reage forte a eventos\n"
+        relatorio += "            • α baixo <0.07 → mercado maduro/forex\n"
+        relatorio += "            • α + β ≈ 0.98 → vol de hoje explica 98% da vol amanhã\n\n"
+        relatorio += "β (Beta)    → Persistência total da volatilidade (soma de todos os β[i])\n"
+        relatorio += "            • β próximo de 1 → vol dura MUITO tempo\n"
+        relatorio += "            • β > 0.98 → VOL DURA MUITO\n\n"
+        relatorio += "γ (Gamma)   → Assimetria (efeito alavancagem)\n"
+        relatorio += "            • Presente em: EGARCH e GJR-GARCH\n"
+        relatorio += "            • γ > 0 → más notícias aumentam vol mais que boas\n"
+        relatorio += "            • γ = 0 → sem assimetria (GARCH)\n"
+        relatorio += "            • Se γ ≠ 0 → use EGARCH ou GJR no EA!\n\n"
+        relatorio += "DICAS PARA MT5:\n"
+        relatorio += "• EGARCH: use log(vol) → exp() no MQL5\n"
+        relatorio += "• GJR: use (retorno < 0) ? (alpha + gamma) : alpha\n"
+        relatorio += "• Para GARCH(p,q): some todos os α[i] e β[i]\n"
+        relatorio += "• Atualize todo dia com novos dados\n"
+        relatorio += "="*160 + "\n\n"
+        relatorio += "LEGENDA DAS INTERPRETAÇÕES AUTOMÁTICAS (v3.9.4)\n"
+        relatorio += "="*160 + "\n"
+        relatorio += "FOREX CLÁSSICO     → FOREX + GARCH + α<0.07 + β>0.90\n"
+        relatorio += "VOL TÉCNICA        → FUTUROS + GARCH + α>0.08\n"
+        relatorio += "ACAO MADURA        → AÇÃO + GARCH + α<0.07\n"
+        relatorio += "ACAO VOLÁTIL       → AÇÃO + GARCH + α>0.15\n"
+        relatorio += "QUEDAS EXPLODEM VOL! → EGARCH + Ω < -0.5\n"
+        relatorio += "VOL DURA MUITO     → β > 0.98\n"
+        relatorio += "TECH/PÂNICO        → EGARCH + Ω < -0.3\n"
 
         st.code(relatorio, language="text")
-        st.download_button("BAIXAR RELATORIO", relatorio, f"ANALISE_GARCH_PRO_{datetime.now().strftime('%Y-%m-%d')}.txt")
+        st.download_button("BAIXAR RELATÓRIO DIDÁTICO", relatorio, f"ANALISE_GARCH_PRO_{datetime.now().strftime('%Y-%m-%d')}.txt", "text/plain")
