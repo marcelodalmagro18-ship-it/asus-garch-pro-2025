@@ -22,12 +22,11 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Login system (mesmo de antes)
+# Login (mesmo de antes)
 if "users" not in st.session_state: st.session_state.users = {}
 if "logado" not in st.session_state: st.session_state.logado = None
 
 if not st.session_state.logado:
-    # ... (mesmo cadastro/login/admin de antes - não mudei)
     col1, col2 = st.columns(2)
     with col1:
         st.header("CADASTRO")
@@ -74,9 +73,9 @@ else:
         st.rerun()
 
     st.title("GARCH ANALYZER PRO 3.9.4 – ONLINE 24H")
-    st.markdown("**Seu notebook original 100% fiel - turbinado pelo Grok <3**")
+    st.markdown("**100% automático como seu notebook — escolhe o MELHOR MODELO por AIC! <3**")
 
-    # CARREGAR meus_ativos.txt
+    # meus_ativos.txt
     uploaded = st.file_uploader("Carregar meus_ativos.txt", type="txt")
     if uploaded:
         string = uploaded.read().decode("utf-8")
@@ -84,47 +83,51 @@ else:
         st.success(f"Carregados {len(st.session_state.ativos)} ativos!")
 
     if "ativos" not in st.session_state:
-        st.session_state.ativos = ["PETR4.SA", "VALE3.SA", "6A=F", "6B=F", "6C=F", "6E=F", "6J=F"]
+        st.session_state.ativos = ["PETR4.SA", "VALE3.SA", "6A=F", "6B=F", "6C=F", "6E=F", "6J=F", "MES=F"]
 
-    # CADASTRO DE ATIVOS
     col_at1, col_at2 = st.columns([3,1])
     with col_at1:
-        ativos_selecionados = st.multiselect("Ativos para analisar", st.session_state.ativos, default=st.session_state.ativos[:5])
+        ativos_selecionados = st.multiselect("Ativos", st.session_state.ativos, default=st.session_state.ativos[:7])
     with col_at2:
         novo = st.text_input("Novo ativo")
         if st.button("ADICIONAR"):
             if novo not in st.session_state.ativos:
                 st.session_state.ativos.append(novo.upper())
                 st.rerun()
-        if st.button("EXCLUIR SELECIONADO"):
+        if st.button("EXCLUIR"):
             for a in ativos_selecionados:
                 if a in st.session_state.ativos:
                     st.session_state.ativos.remove(a)
             st.rerun()
 
-    # Salvar meus_ativos.txt
-    txt_save = ",".join(st.session_state.ativos)
-    st.download_button("Baixar meus_ativos.txt", txt_save, "meus_ativos.txt", "text/plain")
+    st.download_button("Baixar meus_ativos.txt", ",".join(st.session_state.ativos), "meus_ativos.txt")
 
-    modelo = st.selectbox("Modelo", ["GARCH(1,1)", "GARCH(1,2)", "GARCH(2,1)", "EGARCH(1,1)", "EGARCH(1,2)", "GJR-GARCH(1,1,1)"])
     distribuicao = st.selectbox("Distribuição", ["normal", "t"])
     inicio = st.date_input("Início", datetime.now() - timedelta(days=1462))
     fim = st.date_input("Fim", datetime.now())
+    alarme_percent = st.slider("Alarme Vol Atual > Longo em %", 0, 100, 20)
 
-    if st.button("EXECUTAR PRO 3.9.4"):
+    if st.button("EXECUTAR PRO 3.9.4 – ANÁLISE AUTOMÁTICA"):
         relatorio = f"GARCH ANALYZER PRO 3.9.4 – ANÁLISE COMPLETA + REGRAS POR TIPO DE ATIVO\n"
         relatorio += f"Data da análise: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
         relatorio += f"Período analisado: {inicio} → {fim}\n"
-        relatorio += f"Dias corridos: {(fim - inicio).days} | Dias úteis: ??? (≈ {((fim - inicio).days/365)*252:.0f} anos)\n\n"
+        relatorio += f"Dias corridos: {(fim - inicio).days} | Dias úteis: ≈ {((fim - inicio).days * 252 / 365):.0f}\n\n"
         relatorio += "RESULTADOS DOS MODELOS VENCEDORES + INTERPRETAÇÃO AUTOMÁTICA\n"
-        relatorio += "="*150 + "\n"
-        relatorio += "Ativo    Modelo           AIC      LB     Ω            α          β          γ          Status     Interpretação                                     \n"
-        relatorio += "="*150 + "\n"
+        relatorio += "="*160 + "\n"
+        relatorio += "Ativo    Modelo           AIC      LB     Ω            α          β          γ          Status     Interpretação\n"
+        relatorio += "="*160 + "\n"
 
-        resultados = []
+        modelos_list = [
+            ("GARCH(1,1)", 1, 0, 1, "Garch"),
+            ("GARCH(1,2)", 1, 0, 2, "Garch"),
+            ("GARCH(2,1)", 2, 0, 1, "Garch"),
+            ("EGARCH(1,1)", 1, 0, 1, "EGarch"),
+            ("EGARCH(1,2)", 1, 0, 2, "EGarch"),
+            ("GJR-GARCH(1,1,1)", 1, 1, 1, "GJR")
+        ]
 
         for ativo in ativos_selecionados:
-            with st.spinner(f"Processando {ativo}..."):
+            with st.spinner(f"Testando 6 modelos em {ativo}..."):
                 try:
                     data = yf.download(ativo, start=inicio, end=fim, progress=False)
                     if data.empty:
@@ -133,76 +136,87 @@ else:
                     ret = data["Close"].pct_change().dropna() * 100
                     scaled = ret * 10
 
-                    # Parse modelo
-                    if "GARCH(1,1)" in modelo: p, q, vol, o = 1, 1, "Garch", 0
-                    elif "GARCH(1,2)" in modelo: p, q, vol, o = 1, 2, "Garch", 0
-                    elif "GARCH(2,1)" in modelo: p, q, vol, o = 2, 1, "Garch", 0
-                    elif "EGARCH(1,1)" in modelo: p, q, vol, o = 1, 1, "EGarch", 0
-                    elif "EGARCH(1,2)" in modelo: p, q, vol, o = 1, 2, "EGarch", 0
-                    elif "GJR" in modelo: p, q, vol, o = 1, 1, "GJR", 1
+                    melhor_aic = np.inf
+                    melhor_res = None
+                    melhor_modelo_nome = ""
 
-                    am = arch_model(scaled, p=p, o=o, q=q, vol=vol, dist=distribuicao)
-                    res = am.fit(disp="off")
+                    for nome, p, o, q, vol in modelos_list:
+                        try:
+                            am = arch_model(scaled, p=p, o=o, q=q, vol=vol, dist=distribuicao)
+                            res = am.fit(disp="off")
+                            if res.aic < melhor_aic:
+                                melhor_aic = res.aic
+                                melhor_res = res
+                                melhor_modelo_nome = nome
+                        except:
+                            pass
 
+                    if melhor_res is None:
+                        st.error(f"{ativo} nenhum modelo convergiu")
+                        continue
+
+                    res = melhor_res
                     omega = res.params.get("omega", 0)
-                    alpha_sum = sum(res.params.get(f"alpha[{i}]", 0) for i in range(1, p+1))
-                    beta_sum = sum(res.params.get(f"beta[{i}]", 0) for i in range(1, q+1))
-                    gamma = res.params.get("gamma[1]", 0) / 2 if o > 0 else 0
+                    alpha_sum = sum(res.params.get(f"alpha[{i}]", 0) for i in range(1, 10))
+                    beta_sum = sum(res.params.get(f"beta[{i}]", 0) for i in range(1, 10))
+                    gamma = res.params.get("gamma[1]", 0) / 2 if "GJR" in melhor_modelo_nome else res.params.get("gamma[1]", 0)
                     vol_long = np.sqrt((omega / (1 - alpha_sum - beta_sum - gamma)) * 252) / 10
                     vol_atual = np.sqrt(res.conditional_volatility.iloc[-1]) * np.sqrt(252) / 10
-                    aic = res.aic
                     lb = acorr_ljungbox(res.resid, lags=10, return_df=True)["lb_pvalue"].iloc[-1]
 
                     status = "EXCELENTE" if lb > 0.05 else "ATENCAO"
-                    if "F" in ativo or ativo.endswith(".L"): interpret = "VOL TÉCNICA (FUTUROS)"
-                    elif alpha_sum < 0.07: interpret = "FOREX CLÁSSICO" if any(x in ativo for x in ["EUR", "USD", "GBP"]) else "ACAO MADURA"
+                    if "F" in ativo: interpret = "VOL TÉCNICA (FUTUROS)"
+                    elif alpha_sum < 0.07: interpret = "FOREX CLÁSSICO" if any(x in ativo for x in ["EUR","USD","GBP","JPY"]) else "ACAO MADURA"
                     elif alpha_sum > 0.15: interpret = "ACAO VOLÁTIL"
-                    elif gamma > 0.05: interpret = "QUEDAS EXPLODEM VOL!"
+                    elif "EGARCH" in melhor_modelo_nome and omega < -0.5: interpret = "QUEDAS EXPLODEM VOL!"
+                    elif beta_sum > 0.98: interpret = "VOL DURA MUITO"
                     else: interpret = "Estável"
 
-                    resultados.append({
-                        "ativo": ativo, "modelo": modelo, "aic": aic, "lb": lb, "omega": omega,
-                        "alpha": alpha_sum, "beta": beta_sum, "gamma": gamma, "status": status,
-                        "interpret": interpret, "vol_long": vol_long, "vol_atual": vol_atual
-                    })
+                    relatorio += f"{ativo:<8} {melhor_modelo_nome:<16} {melhor_aic:8.1f} {lb:6.3f} {omega:10.6f} {alpha_sum:10.6f} {beta_sum:10.6f} {gamma:10.6f} {status:<10} {interpret}\n"
 
-                    relatorio += f"{ativo:<8} {modelo:<16} {aic:8.1f} {lb:6.3f} {omega:10.6f} {alpha_sum:10.6f} {beta_sum:10.6f} {gamma:10.6f} {status:<10} {interpret}\n"
-
-                    # Gráfico + métricas
+                    # Métricas + gráfico
                     col1, col2 = st.columns([1,2])
                     with col1:
                         st.metric("Vol Longo", f"{vol_long:.4%}")
                         st.metric("Vol Atual", f"{vol_atual:.4%}")
                         st.metric("Diferença", f"{(vol_atual/vol_long-1)*100:+.2f}%")
+                        st.metric("Modelo Vencedor", melhor_modelo_nome)
                     with col2:
                         fig, ax = plt.subplots(figsize=(10,5))
                         vol_plot = np.sqrt(res.conditional_volatility.iloc[-200:]) * np.sqrt(252) / 10
                         vol_plot.plot(ax=ax)
-                        ax.axhline(vol_long, color="red", linestyle="--", label="Vol Longo")
-                        ax.set_title(f"{modelo} - {ativo}")
-                        ax.legend()
+                        ax.axhline(vol_long, color="red", linestyle="--")
+                        ax.set_title(f"{melhor_modelo_nome} - {ativo}")
                         st.pyplot(fig)
 
-                    # CSV MT5
+                    if vol_atual > vol_long * (1 + alarme_percent/100):
+                        st.error(f"ALARME {ativo}: Vol Atual +{alarme_percent}% acima!")
+
+                    # CSV MT5 vencedor
                     csv_mt5 = io.StringIO()
-                    csv_mt5.write("Parametro,Valor\nomega,{}\nalpha1,{}\nbeta1,{}\ngamma1,{}\n".format(
-                        omega, res.params.get("alpha[1]",0), res.params.get("beta[1]",0), res.params.get("gamma[1]",0)
-                    ))
-                    st.download_button(f"MT5 {ativo}", csv_mt5.getvalue(), f"{ativo}_PARAMETROS_MT5.csv", "text/csv")
+                    csv_mt5.write("Parametro,Valor\n")
+                    csv_mt5.write(f"omega,{omega}\n")
+                    for i in range(1,10):
+                        a = res.params.get(f"alpha[{i}]",0)
+                        b = res.params.get(f"beta[{i}]",0)
+                        if a > 0: csv_mt5.write(f"alpha{i},{a}\n")
+                        if b > 0: csv_mt5.write(f"beta{i},{b}\n")
+                    g = res.params.get("gamma[1]",0)
+                    if g > 0: csv_mt5.write(f"gamma1,{g}\n")
+                    st.download_button(f"MT5 {ativo}", csv_mt5.getvalue(), f"{ativo}_MT5.csv", "text/csv")
 
                 except Exception as e:
                     st.error(f"Erro {ativo}: {e}")
 
-        relatorio += "="*150 + "\n"
+        relatorio += "="*160 + "\n"
         relatorio += "LEGENDA DAS INTERPRETAÇÕES AUTOMÁTICAS (v3.9.4)\n"
-        relatorio += "="*150 + "\n"
+        relatorio += "="*160 + "\n"
         relatorio += "FOREX CLÁSSICO     → FOREX + GARCH + α<0.07 + β>0.90\n"
         relatorio += "VOL TÉCNICA        → FUTUROS + GARCH + α>0.08\n"
         relatorio += "ACAO MADURA        → AÇÃO + GARCH + α<0.07\n"
         relatorio += "ACAO VOLÁTIL       → AÇÃO + GARCH + α>0.15\n"
         relatorio += "QUEDAS EXPLODEM VOL! → EGARCH + Ω < -0.5\n"
         relatorio += "VOL DURA MUITO     → β > 0.98\n"
-        relatorio += "TECH/PÂNICO        → EGARCH + Ω < -0.3\n"
 
         st.code(relatorio, language="text")
-        st.download_button("BAIXAR RELATÓRIO COMPLETO", relatorio, "ANALISE_GARCH_PRO_2025-11-08.txt", "text/plain")
+        st.download_button("BAIXAR RELATÓRIO COMPLETO", relatorio, f"ANALISE_GARCH_PRO_{datetime.now().strftime('%Y-%m-%d')}.txt", "text/plain")
