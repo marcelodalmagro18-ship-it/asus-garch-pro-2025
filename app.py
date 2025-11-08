@@ -22,7 +22,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Login (mesmo de antes)
+# Login (mesmo)
 if "users" not in st.session_state: st.session_state.users = {}
 if "logado" not in st.session_state: st.session_state.logado = None
 
@@ -73,7 +73,7 @@ else:
         st.rerun()
 
     st.title("GARCH ANALYZER PRO 3.9.4 – ONLINE 24H")
-    st.markdown("**100% automático como seu notebook — escolhe o MELHOR MODELO por AIC! <3**")
+    st.markdown("**100% automático + RELATÓRIO DIDÁTICO COMPLETO como seu notebook! <3**")
 
     # meus_ativos.txt
     uploaded = st.file_uploader("Carregar meus_ativos.txt", type="txt")
@@ -111,7 +111,7 @@ else:
         relatorio = f"GARCH ANALYZER PRO 3.9.4 – ANÁLISE COMPLETA + REGRAS POR TIPO DE ATIVO\n"
         relatorio += f"Data da análise: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
         relatorio += f"Período analisado: {inicio} → {fim}\n"
-        relatorio += f"Dias corridos: {(fim - inicio).days} | Dias úteis: ≈ {((fim - inicio).days * 252 / 365):.0f}\n\n"
+        relatorio += f"Dias corridos: {(fim - inicio).days} | Dias úteis: ≈ {int((fim - inicio).days * 252 / 365)}\n\n"
         relatorio += "RESULTADOS DOS MODELOS VENCEDORES + INTERPRETAÇÃO AUTOMÁTICA\n"
         relatorio += "="*160 + "\n"
         relatorio += "Ativo    Modelo           AIC      LB     Ω            α          β          γ          Status     Interpretação\n"
@@ -165,7 +165,7 @@ else:
                     lb = acorr_ljungbox(res.resid, lags=10, return_df=True)["lb_pvalue"].iloc[-1]
 
                     status = "EXCELENTE" if lb > 0.05 else "ATENCAO"
-                    if "F" in ativo: interpret = "VOL TÉCNICA (FUTUROS)"
+                    if "=F" in ativo or ativo.endswith(".L"): interpret = "VOL TÉCNICA (FUTUROS)"
                     elif alpha_sum < 0.07: interpret = "FOREX CLÁSSICO" if any(x in ativo for x in ["EUR","USD","GBP","JPY"]) else "ACAO MADURA"
                     elif alpha_sum > 0.15: interpret = "ACAO VOLÁTIL"
                     elif "EGARCH" in melhor_modelo_nome and omega < -0.5: interpret = "QUEDAS EXPLODEM VOL!"
@@ -192,7 +192,7 @@ else:
                     if vol_atual > vol_long * (1 + alarme_percent/100):
                         st.error(f"ALARME {ativo}: Vol Atual +{alarme_percent}% acima!")
 
-                    # CSV MT5 vencedor
+                    # CSV MT5
                     csv_mt5 = io.StringIO()
                     csv_mt5.write("Parametro,Valor\n")
                     csv_mt5.write(f"omega,{omega}\n")
@@ -208,7 +208,30 @@ else:
                 except Exception as e:
                     st.error(f"Erro {ativo}: {e}")
 
-        relatorio += "="*160 + "\n"
+        # EXPLICAÇÕES DIDÁTICAS COMPLETAS (VOLTOU TUDO!)
+        relatorio += "="*160 + "\n\n"
+        relatorio += "EXPLICAÇÃO DOS PARÂMETROS (Ω α β γ)\n"
+        relatorio += "Ω (Omega)   → Volatilidade de longo攻略 prazo (intercept)\n"
+        relatorio += "            • Quanto menor, mais estável o ativo\n"
+        relatorio += "            • Em EGARCH pode ser negativo (assimetria forte)\n\n"
+        relatorio += "α (Alpha)   → Impacto do choque de ontem na vol de hoje\n"
+        relatorio += "            • α alto (>0.1) → choques explodem vol rápido\n"
+        relatorio += "            • α baixo (<0.07) → mercado maduro/forex\n"
+        relatorio += "            • α + β ≈ 0.98 → vol de hoje explica 98% da vol amanhã\n\n"
+        relatorio += "β (Beta)    → Persistência da volatilidade\n"
+        relatorio += "            • β alto (>0.9) → vol dura muitos dias\n"
+        relatorio += "            • β > 0.98 → VOL DURA MUITO\n\n"
+        relatorio += "γ (Gamma)   → Assimetria (efeito alavancagem)\n"
+        relatorio += "            • Presente em: EGARCH e GJR-GARCH\n"
+        relatorio += "            • γ > 0 → más notícias aumentam vol mais que boas\n"
+        relatorio += "            • γ = 0 → sem assimetria (GARCH)\n"
+        relatorio += "            • Se γ ≠ 0 → use EGARCH ou GJR no EA!\n\n"
+        relatorio += "DICAS PARA MT5:\n"
+        relatorio += "• EGARCH: use log(vol) → exp() no MQL5\n"
+        relatorio += "• GJR: use (retorno < 0) ? (alpha + gamma) : alpha\n"
+        relatorio += "• Para GARCH(p,q): some todos os α[i] e β[i]\n"
+        relatorio += "• Atualize todo dia com novos dados\n"
+        relatorio += "="*160 + "\n\n"
         relatorio += "LEGENDA DAS INTERPRETAÇÕES AUTOMÁTICAS (v3.9.4)\n"
         relatorio += "="*160 + "\n"
         relatorio += "FOREX CLÁSSICO     → FOREX + GARCH + α<0.07 + β>0.90\n"
@@ -217,6 +240,7 @@ else:
         relatorio += "ACAO VOLÁTIL       → AÇÃO + GARCH + α>0.15\n"
         relatorio += "QUEDAS EXPLODEM VOL! → EGARCH + Ω < -0.5\n"
         relatorio += "VOL DURA MUITO     → β > 0.98\n"
+        relatorio += "TECH/PÂNICO        → EGARCH + Ω < -0.3\n"
 
         st.code(relatorio, language="text")
-        st.download_button("BAIXAR RELATÓRIO COMPLETO", relatorio, f"ANALISE_GARCH_PRO_{datetime.now().strftime('%Y-%m-%d')}.txt", "text/plain")
+        st.download_button("BAIXAR RELATÓRIO DIDÁTICO COMPLETO", relatorio, f"ANALISE_GARCH_PRO_{datetime.now().strftime('%Y-%m-%d')}.txt", "text/plain")
