@@ -1,6 +1,7 @@
 """
 ASUS GARCH PRO 2025 - VERSÃO COMPLETA
 Login + Cálculo Simples + Analyzer Pro Multi-Ativos
++ PERSISTÊNCIA DE USUÁRIOS (salva em arquivo JSON)
 """
 
 import streamlit as st
@@ -12,10 +13,36 @@ from statsmodels.stats.diagnostic import acorr_ljungbox
 import matplotlib.pyplot as plt
 import hashlib
 import time
+import json
+import os
 from datetime import datetime, timedelta
 
 st.set_page_config(page_title="ASUS GARCH PRO", page_icon="📊", layout="wide")
 
+# ==================== PERSISTÊNCIA DE USUÁRIOS ====================
+USERS_FILE = "users_database.json"
+
+def carregar_usuarios():
+    """Carrega usuários do arquivo JSON"""
+    if os.path.exists(USERS_FILE):
+        try:
+            with open(USERS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def salvar_usuarios(users_dict):
+    """Salva usuários no arquivo JSON"""
+    with open(USERS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(users_dict, f, indent=2, ensure_ascii=False)
+
+# Inicializa usuários (carrega do arquivo se existir)
+if "users" not in st.session_state:
+    st.session_state.users = carregar_usuarios()
+
+if "logado" not in st.session_state:
+    st.session_state.logado = None
 # ==================== CONFIGURAÇÕES GLOBAIS ====================
 MODELOS_ANALYZER = [
     ('GARCH', 1, 0, 1, 'GARCH(1,1)'),
@@ -266,6 +293,7 @@ if not st.session_state.logado:
                         "senha": hashlib.sha256(senha.encode()).hexdigest(),
                         "aprovado": False
                     }
+                    salvar_usuarios(st.session_state.users)  # ← SALVA NO ARQUIVO
                     st.success("✅ Cadastro enviado! Aguarde aprovação.")
     
     with col2:
@@ -301,6 +329,7 @@ if not st.session_state.logado:
                     with c2:
                         if st.button("✅ APROVAR", key=email):
                             st.session_state.users[email]["aprovado"] = True
+                            salvar_usuarios(st.session_state.users)  # ← SALVA NO ARQUIVO
                             st.success(f"Aprovado: {email}")
                             st.rerun()
 
