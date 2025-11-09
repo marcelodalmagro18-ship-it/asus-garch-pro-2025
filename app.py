@@ -105,6 +105,123 @@ def extrair_parametros(params):
         'gamma': gamma
     }
 
+def gerar_relatorio_txt_completo(resultados, inicio, fim, dias_corridos, dias_uteis):
+    """Gera relatório TXT COMPLETO igual ao Jupyter"""
+    width = 220
+    lines = []
+    
+    lines.append("GARCH ANALYZER PRO 3.9.4 — ANÁLISE COMPLETA + REGRAS POR TIPO DE ATIVO")
+    lines.append(f"Data da análise: {datetime.now():%Y-%m-%d %H:%M:%S}")
+    lines.append(f"Período analisado: {inicio} → {fim}")
+    lines.append(f"Dias corridos: {dias_corridos} | Dias úteis: {dias_uteis} (≈ {dias_uteis/252:.2f} anos)\n")
+    
+    lines.append("RESULTADOS DOS MODELOS VENCEDORES + INTERPRETAÇÃO AUTOMÁTICA")
+    lines.append("=" * width)
+    lines.append(f"{'Ativo':<8} {'Modelo':<16} {'AIC':<8} {'LB':<6} {'Ω':<12} {'α':<10} {'β':<10} {'γ':<10} {'Status':<10} {'Interpretação':<50}\n")
+    lines.append("=" * width)
+    
+    for r in resultados:
+        p = r['params']
+        status = "EXCELENTE" if r['lb_p'] > 0.05 else "BOM"
+        ativo, ticker = r['ativo'], r['ticker']
+        
+        omega = p.get('omega', p.get('mu', 0))
+        alpha_total = sum(p.get(f'alpha[{i}]', 0) for i in range(1, 10) if f'alpha[{i}]' in p)
+        beta_total = sum(p.get(f'beta[{i}]', 0) for i in range(1, 10) if f'beta[{i}]' in p)
+        gamma = p.get('gamma[1]', 0.0)
+        
+        # Determina tipo de ativo
+        tipo = "ACAO"
+        if ativo in ['EURUSD', 'USDBRL'] or 'USD' in ticker or '=X' in ticker:
+            tipo = "FOREX"
+        elif '=F' in ticker or ativo in ['ES', 'NQ', 'RTY', 'YM']:
+            tipo = "FUTUROS"
+        elif ativo.startswith('^') or ativo in ['SPX', 'NDX', 'RUT']:
+            tipo = "INDICE"
+        
+        # Regras de interpretação
+        regras = []
+        if r['model_name'].startswith('EGARCH'):
+            if omega < -0.5: regras.append("QUEDAS EXPLODEM VOL!")
+            elif omega < -0.2: regras.append("Quedas aumentam vol")
+            elif omega < 0: regras.append("Leve alavancagem")
+        if beta_total > 0.98: regras.append("VOL DURA MUITO (CRISES)")
+        elif beta_total > 0.95: regras.append("Vol persistente")
+        if alpha_total > 0.20: regras.append("REAÇÃO FORTE A NOTÍCIAS")
+        elif alpha_total > 0.10: regras.append("Choques moderados")
+        
+        if tipo == "FOREX" and r['model_name'].startswith('GARCH') and alpha_total < 0.07 and beta_total > 0.90:
+            regras.append("FOREX CLÁSSICO")
+        elif tipo == "FUTUROS" and r['model_name'].startswith('GARCH') and alpha_total > 0.08:
+            regras.append("VOL TÉCNICA (FUTUROS)")
+        elif tipo == "ACAO" and r['model_name'].startswith('GARCH'):
+            if alpha_total < 0.07: regras.append("ACAO MADURA")
+            elif alpha_total > 0.15: regras.append("ACAO VOLÁTIL")
+        
+        if r['model_name'].startswith('EGARCH') and omega < -0.3:
+            regras.append("TECH/PÂNICO")
+        
+        interp_str = " | ".join(regras) if regras else "Estável"
+        
+        lines.append(f"{ativo:<8} {r['model_name']:<16} {r['aic']:<8.1f} {r['lb_p']:<6.3f} "
+                    f"{omega:<12.6f} {alpha_total:<10.6f} {beta_total:<10.6f} {gamma:<10.6f} {status:<10} {interp_str:<50}")
+    
+    lines.append("=" * width + "\n")
+    
+    # CRITÉRIOS DE SELEÇÃO
+    lines.append("CRITÉRIOS DE SELEÇÃO DO MELHOR MODELO")
+    lines.append("=" * width)
+    lines.append("AIC (Akaike Information Criterion)")
+    lines.append("    • Quanto MENOR, MELHOR o modelo")
+    lines.append("    • Penaliza complexidade → evita overfitting")
+    lines.append("    • Ex: AIC = -5109 → EXCELENTE")
+    lines.append("    • Ex: AIC = -4000 → modelo pior\n")
+    lines.append("LB p-val (Ljung-Box p-value)")
+    lines.append("    • Testa se resíduos são 'ruído branco'")
+    lines.append("    • p-val > 0.05 → MODELO VÁLIDO")
+    lines.append("    • p-val < 0.05 → resíduos com padrão → MODELO RUIM")
+    lines.append("    • Status 'EXCELENTE' = p-val > 0.05\n")
+    
+    # PARÂMETROS GREGOS
+    lines.append("INTERPRETAÇÃO DOS PARÂMETROS GREGOS")
+    lines.append("=" * width)
+    lines.append("Ω (Omega)   → Volatilidade de longo prazo")
+    lines.append("            • GARCH/GJR: sempre positivo")
+    lines.append("            • EGARCH: pode ser NEGATIVO → quedas aumentam vol mais que subidas")
+    lines.append("            • Ex: Ω = -0.645 → quedas geram PÂNICO de vol\n")
+    lines.append("α (Alpha)   → Impacto total de choques recentes (soma de todos os α[i])")
+    lines.append("            • α alto → volatilidade reage forte a eventos")
+    lines.append("            • Ex: α = 0.341 → 34.1% do choque entra na vol\n")
+    lines.append("β (Beta)    → Persistência total da volatilidade (soma de todos os β[i])")
+    lines.append("            • β próximo de 1 → vol dura MUITO tempo")
+    lines.append("            • Ex: β = 0.991 → vol dura ~30 dias")
+    lines.append("            • α + β ≈ 0.98 → vol de hoje explica 98% da vol amanhã\n")
+    lines.append("γ (Gamma)   → Assimetria (efeito alavancagem)")
+    lines.append("            • Presente em: EGARCH e GJR-GARCH")
+    lines.append("            • γ > 0 → más notícias aumentam vol mais que boas")
+    lines.append("            • γ = 0 → sem assimetria (GARCH)")
+    lines.append("            • Se γ ≠ 0 → use EGARCH ou GJR no EA!\n")
+    lines.append("DICAS PARA MT5:")
+    lines.append("• EGARCH: use log(vol) → exp() no MQL5")
+    lines.append("• GJR: use (retorno < 0) ? (alpha + gamma) : alpha")
+    lines.append("• Para GARCH(p,q): some todos os α[i] e β[i]")
+    lines.append("• Atualize todo dia com novos dados")
+    lines.append("=" * width + "\n")
+    
+    # LEGENDA
+    lines.append("LEGENDA DAS INTERPRETAÇÕES AUTOMÁTICAS (v3.9.4)")
+    lines.append("=" * width)
+    lines.append("FOREX CLÁSSICO     → FOREX + GARCH + α<0.07 + β>0.90")
+    lines.append("VOL TÉCNICA        → FUTUROS + GARCH + α>0.08")
+    lines.append("ACAO MADURA        → AÇÃO + GARCH + α<0.07")
+    lines.append("ACAO VOLÁTIL       → AÇÃO + GARCH + α>0.15")
+    lines.append("QUEDAS EXPLODEM VOL! → EGARCH + Ω < -0.5")
+    lines.append("VOL DURA MUITO     → β > 0.98")
+    lines.append("TECH/PÂNICO        → EGARCH + Ω < -0.3")
+    lines.append("=" * width)
+    
+    return "\n".join(lines)
+
 def gerar_csv_mt5(resultados):
     dados = []
     for r in resultados:
@@ -416,22 +533,23 @@ else:
                     col1, col2 = st.columns(2)
                     
                     with col1:
+                        # TXT COMPLETO (IGUAL AO JUPYTER)
+                        txt_completo = gerar_relatorio_txt_completo(resultados_finais, inicio_str, fim_str, dias_corridos, dias_uteis)
+                        st.download_button(
+                            label="📄 Download Relatório TXT COMPLETO",
+                            data=txt_completo,
+                            file_name=f"ANALISE_GARCH_PRO_{datetime.now().strftime('%Y-%m-%d')}.txt",
+                            mime="text/plain",
+                            use_container_width=True
+                        )
+                    
+                    with col2:
                         # CSV MT5
                         df_csv = gerar_csv_mt5(resultados_finais)
                         st.download_button(
                             label="📊 Download CSV para MT5",
                             data=df_csv.to_csv(index=False, sep=';', encoding='utf-8-sig'),
                             file_name=f"PARAMETROS-MT5-{datetime.now().strftime('%Y-%m-%d')}.csv",
-                            mime="text/csv",
-                            use_container_width=True
-                        )
-                    
-                    with col2:
-                        # Excel completo
-                        st.download_button(
-                            label="📄 Download Relatório Excel",
-                            data=pd.DataFrame(df_resultados).to_csv(index=False, encoding='utf-8-sig'),
-                            file_name=f"RELATORIO-GARCH-{datetime.now().strftime('%Y-%m-%d')}.csv",
                             mime="text/csv",
                             use_container_width=True
                         )
