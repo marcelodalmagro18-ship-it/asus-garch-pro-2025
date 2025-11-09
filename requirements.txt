@@ -4,3 +4,4 @@ arch
 pandas
 matplotlib
 numpy
+statsmodels
