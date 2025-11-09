@@ -1,29 +1,23 @@
 """
-GARCH ANALYZER PRO 3.9.5 - STREAMLIT VERSION
-Conversão do Jupyter Notebook para Streamlit
-- Interface web moderna
-- Mesma funcionalidade do notebook
-- Roda local ou deploy gratuito
+ASUS GARCH PRO 2025 - VERSÃO COMPLETA
+Login + Cálculo Simples + Analyzer Pro Multi-Ativos
 """
 
 import streamlit as st
-import yfinance as yf
 import pandas as pd
+import yfinance as yf
 import numpy as np
-from datetime import datetime, timedelta
 from arch import arch_model
 from statsmodels.stats.diagnostic import acorr_ljungbox
+import matplotlib.pyplot as plt
+import hashlib
 import time
-import os
+from datetime import datetime, timedelta
 
-# ==================== CONFIGURAÇÕES ====================
-st.set_page_config(
-    page_title="GARCH Analyzer Pro",
-    page_icon="📊",
-    layout="wide"
-)
+st.set_page_config(page_title="ASUS GARCH PRO", page_icon="📊", layout="wide")
 
-MODELOS = [
+# ==================== CONFIGURAÇÕES GLOBAIS ====================
+MODELOS_ANALYZER = [
     ('GARCH', 1, 0, 1, 'GARCH(1,1)'),
     ('GARCH', 1, 0, 2, 'GARCH(1,2)'),
     ('GARCH', 2, 0, 1, 'GARCH(2,1)'),
@@ -37,9 +31,7 @@ TICKER_MAP = {
     'EURUSD=X': 'EURUSD', 'BRL=X': 'USDBRL'
 }
 
-ARQUIVO_ATIVOS = "meus_ativos.txt"
-
-# ==================== FUNÇÕES BÁSICAS ====================
+# ==================== FUNÇÕES DO ANALYZER ====================
 def baixar_dados(ticker, inicio, fim):
     for _ in range(5):
         try:
@@ -78,12 +70,12 @@ def ajustar_modelo(retornos, vol_type, p, o, q):
             'success': True,
             'model_name': f"{vol_type}({p},{o},{q})" if o else f"{vol_type}({p},{q})"
         }
-    except Exception as e:
+    except:
         return {'params': None, 'aic': np.inf, 'lb_p': 0.0, 'success': False, 'model_name': vol_type}
 
 def selecionar_melhor_modelo(retornos, ticker):
     resultados = []
-    for vol, p, o, q, nome in MODELOS:
+    for vol, p, o, q, nome in MODELOS_ANALYZER:
         res = ajustar_modelo(retornos, vol, p, o, q)
         res['nome_exibicao'] = nome
         resultados.append(res)
@@ -113,64 +105,7 @@ def extrair_parametros(params):
         'gamma': gamma
     }
 
-# ==================== GERENCIAMENTO DE ATIVOS ====================
-def carregar_ativos():
-    if os.path.exists(ARQUIVO_ATIVOS):
-        with open(ARQUIVO_ATIVOS, 'r', encoding='utf-8') as f:
-            return [line.strip().upper() for line in f if line.strip()]
-    else:
-        return ['MES=F', 'MNQ=F', 'M2K=F', 'MYM=F', 'EURUSD=X', 'NVDA', 'TSLA']
-
-def salvar_ativos(ativos):
-    with open(ARQUIVO_ATIVOS, 'w', encoding='utf-8') as f:
-        for ativo in sorted(ativos):
-            f.write(ativo + '\n')
-
-# ==================== EXPORTAÇÃO ====================
-def gerar_relatorio_txt(resultados, inicio, fim, dias_corridos, dias_uteis):
-    """Gera relatório TXT em memória"""
-    width = 220
-    lines = []
-    
-    lines.append("GARCH ANALYZER PRO 3.9.5 - ANÁLISE COMPLETA")
-    lines.append(f"Data da análise: {datetime.now():%Y-%m-%d %H:%M:%S}")
-    lines.append(f"Período analisado: {inicio} → {fim}")
-    lines.append(f"Dias corridos: {dias_corridos} | Dias úteis: {dias_uteis} (≈ {dias_uteis/252:.2f} anos)\n")
-    
-    lines.append("RESULTADOS DOS MODELOS")
-    lines.append("=" * width)
-    lines.append(f"{'Ativo':<8} {'Modelo':<16} {'AIC':<8} {'LB':<6} {'Ω':<12} {'α':<10} {'β':<10} {'γ':<10} {'Status':<10} {'Interpretação':<50}")
-    lines.append("=" * width)
-    
-    for r in resultados:
-        p = r['params']
-        status = "EXCELENTE" if r['lb_p'] > 0.05 else "BOM"
-        params = extrair_parametros(p)
-        
-        omega = params['omega']
-        alpha_total = params['alpha_total']
-        beta_total = params['beta_total']
-        gamma = params['gamma']
-        
-        # Interpretação
-        regras = []
-        if r['model_name'].startswith('EGARCH'):
-            if omega < -0.5: regras.append("QUEDAS EXPLODEM VOL!")
-            elif omega < -0.2: regras.append("Quedas aumentam vol")
-        if beta_total > 0.98: regras.append("VOL DURA MUITO")
-        if alpha_total > 0.20: regras.append("REAÇÃO FORTE A NOTÍCIAS")
-        
-        interp_str = " | ".join(regras) if regras else "Estável"
-        
-        lines.append(f"{r['ativo']:<8} {r['model_name']:<16} {r['aic']:<8.1f} {r['lb_p']:<6.3f} "
-                    f"{omega:<12.6f} {alpha_total:<10.6f} {beta_total:<10.6f} {gamma:<10.6f} {status:<10} {interp_str:<50}")
-    
-    lines.append("=" * width)
-    
-    return "\n".join(lines)
-
 def gerar_csv_mt5(resultados):
-    """Gera CSV para MT5"""
     dados = []
     for r in resultados:
         params = extrair_parametros(r['params'])
@@ -186,194 +121,353 @@ def gerar_csv_mt5(resultados):
         })
     return pd.DataFrame(dados)
 
-# ==================== INTERFACE STREAMLIT ====================
-def main():
-    st.title("📊 GARCH ANALYZER PRO 3.9.5")
-    st.markdown("**Análise de Volatilidade com GARCH, EGARCH e GJR-GARCH**")
-    
-    # Sidebar - Configurações
-    with st.sidebar:
-        st.header("⚙️ Configurações")
-        
-        # Gerenciamento de ativos
-        st.subheader("📈 Ativos")
-        if 'ativos' not in st.session_state:
-            st.session_state.ativos = carregar_ativos()
-        
-        # Adicionar novo ativo
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            novo_ativo = st.text_input("Adicionar ativo:", placeholder="Ex: AAPL", key="novo_ativo")
-        with col2:
-            if st.button("➕", help="Adicionar"):
-                if novo_ativo.strip():
-                    ativo_upper = novo_ativo.strip().upper()
-                    if ativo_upper not in st.session_state.ativos:
-                        st.session_state.ativos.append(ativo_upper)
-                        st.session_state.ativos = sorted(st.session_state.ativos)
-                        salvar_ativos(st.session_state.ativos)
-                        st.success(f"✅ {ativo_upper} adicionado!")
-                        st.rerun()
-        
-        # Selecionar ativos
-        ativos_selecionados = st.multiselect(
-            "Selecione os ativos para análise:",
-            options=st.session_state.ativos,
-            default=st.session_state.ativos[:3]
-        )
-        
-        # Remover ativos
-        if st.button("🗑️ Remover selecionados"):
-            for ativo in ativos_selecionados:
-                st.session_state.ativos.remove(ativo)
-            salvar_ativos(st.session_state.ativos)
-            st.success("✅ Ativos removidos!")
-            st.rerun()
-        
-        st.divider()
-        
-        # Período de análise
-        st.subheader("📅 Período")
-        hoje = datetime.today()
-        col1, col2 = st.columns(2)
-        with col1:
-            inicio = st.date_input(
-                "Início:",
-                value=(hoje - timedelta(days=365*5)).date(),
-                max_value=hoje.date()
-            )
-        with col2:
-            fim = st.date_input(
-                "Fim:",
-                value=hoje.date(),
-                max_value=hoje.date()
-            )
-    
-    # Área principal
-    if not ativos_selecionados:
-        st.warning("⚠️ Selecione pelo menos um ativo na barra lateral")
-        return
-    
-    # Botão de análise
-    if st.button("🚀 EXECUTAR ANÁLISE", type="primary", use_container_width=True):
-        
-        inicio_str = inicio.strftime('%Y-%m-%d')
-        fim_str = fim.strftime('%Y-%m-%d')
-        dias_corridos = (fim - inicio).days
-        dias_uteis = np.busday_count(inicio_str, fim_str)
-        
-        st.info(f"📊 Analisando {len(ativos_selecionados)} ativos de {inicio_str} a {fim_str} ({dias_uteis} dias úteis)")
-        
-        resultados_finais = []
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        for idx, ticker in enumerate(ativos_selecionados):
-            status_text.text(f"Processando {ticker}...")
-            progress_bar.progress((idx + 1) / len(ativos_selecionados))
-            
-            try:
-                precos = baixar_dados(ticker, inicio_str, fim_str)
-                retornos = calcular_retornos(precos)
-                melhor, todos = selecionar_melhor_modelo(retornos, ticker)
-                
-                ativo_mt5 = TICKER_MAP.get(ticker, ticker.replace('=X', '').replace('=F', ''))
-                
-                resultados_finais.append({
-                    'ativo': ativo_mt5,
-                    'ticker': ticker,
-                    'model_name': melhor['model_name'],
-                    'aic': melhor['aic'],
-                    'lb_p': melhor['lb_p'],
-                    'params': melhor['params']
-                })
-                
-            except Exception as e:
-                st.error(f"❌ Erro ao processar {ticker}: {e}")
-        
-        status_text.text("✅ Análise concluída!")
-        progress_bar.empty()
-        
-        if not resultados_finais:
-            st.error("❌ Nenhum resultado válido")
-            return
-        
-        # Exibir resultados
-        st.success(f"✅ Análise concluída com sucesso! {len(resultados_finais)} ativos processados.")
-        
-        # Tabela de resultados
-        st.subheader("📊 Resultados dos Modelos")
-        
-        df_resultados = []
-        for r in resultados_finais:
-            params = extrair_parametros(r['params'])
-            status = "✅ EXCELENTE" if r['lb_p'] > 0.05 else "⚠️ BOM"
-            
-            df_resultados.append({
-                'Ativo': r['ativo'],
-                'Modelo': r['model_name'],
-                'AIC': f"{r['aic']:.1f}",
-                'LB p-val': f"{r['lb_p']:.3f}",
-                'Ω (Omega)': f"{params['omega']:.6f}",
-                'α (Alpha)': f"{params['alpha_total']:.6f}",
-                'β (Beta)': f"{params['beta_total']:.6f}",
-                'γ (Gamma)': f"{params['gamma']:.6f}",
-                'Status': status
-            })
-        
-        st.dataframe(pd.DataFrame(df_resultados), use_container_width=True)
-        
-        # Downloads
-        st.subheader("💾 Exportar Resultados")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # TXT
-            txt_content = gerar_relatorio_txt(resultados_finais, inicio_str, fim_str, dias_corridos, dias_uteis)
-            st.download_button(
-                label="📄 Download Relatório TXT",
-                data=txt_content,
-                file_name=f"ANALISE_GARCH_{datetime.now().strftime('%Y-%m-%d')}.txt",
-                mime="text/plain"
-            )
-        
-        with col2:
-            # CSV MT5
-            df_csv = gerar_csv_mt5(resultados_finais)
-            st.download_button(
-                label="📊 Download CSV para MT5",
-                data=df_csv.to_csv(index=False, sep=';', encoding='utf-8-sig'),
-                file_name=f"PARAMETROS-MT5-{datetime.now().strftime('%Y-%m-%d')}.csv",
-                mime="text/csv"
-            )
-        
-        # Explicação dos parâmetros
-        with st.expander("📖 Entenda os Parâmetros"):
-            st.markdown("""
-            **Ω (Omega)** - Volatilidade de longo prazo
-            - GARCH/GJR: sempre positivo
-            - EGARCH: pode ser negativo → quedas aumentam vol
-            
-            **α (Alpha)** - Impacto de choques recentes
-            - α alto → volatilidade reage forte a eventos
-            - Ex: α = 0.341 → 34.1% do choque entra na vol
-            
-            **β (Beta)** - Persistência da volatilidade
-            - β próximo de 1 → vol dura muito tempo
-            - Ex: β = 0.991 → vol dura ~30 dias
-            
-            **γ (Gamma)** - Assimetria (efeito alavancagem)
-            - γ > 0 → más notícias aumentam vol mais que boas
-            - Presente em: EGARCH e GJR-GARCH
-            
-            **AIC** - Akaike Information Criterion
-            - Quanto MENOR, MELHOR o modelo
-            
-            **LB p-val** - Ljung-Box p-value
-            - p-val > 0.05 → modelo válido ✅
-            - p-val < 0.05 → modelo ruim ❌
-            """)
+# ==================== SISTEMA DE LOGIN ====================
+if "users" not in st.session_state:
+    st.session_state.users = {}
+if "logado" not in st.session_state:
+    st.session_state.logado = None
 
-if __name__ == "__main__":
-    main()
+if not st.session_state.logado:
+    st.title("🔐 ASUS GARCH PRO 2025")
+    st.markdown("**Sistema com Login + GARCH Analyzer Profissional**")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.header("📝 CADASTRO")
+        with st.form("cadastro"):
+            email = st.text_input("E-mail")
+            senha = st.text_input("Senha", type="password")
+            convite = st.text_input("Código de Convite", help="king2025 / petr4god / asuspro")
+            if st.form_submit_button("Cadastrar"):
+                if convite not in ["king2025", "petr4god", "asuspro"]:
+                    st.error("❌ Convite inválido!")
+                elif email in st.session_state.users:
+                    st.error("❌ E-mail já usado!")
+                else:
+                    st.session_state.users[email] = {
+                        "senha": hashlib.sha256(senha.encode()).hexdigest(),
+                        "aprovado": False
+                    }
+                    st.success("✅ Cadastro enviado! Aguarde aprovação.")
+    
+    with col2:
+        st.header("🔑 LOGIN")
+        with st.form("login"):
+            email_l = st.text_input("E-mail")
+            senha_l = st.text_input("Senha", type="password")
+            if st.form_submit_button("Entrar"):
+                if email_l in st.session_state.users and st.session_state.users[email_l]["aprovado"]:
+                    if st.session_state.users[email_l]["senha"] == hashlib.sha256(senha_l.encode()).hexdigest():
+                        st.session_state.logado = email_l
+                        st.rerun()
+                    else:
+                        st.error("❌ Senha errada!")
+                else:
+                    st.error("❌ Usuário não aprovado ou inexistente.")
+    
+    # PAINEL ADMIN
+    st.divider()
+    with st.expander("👑 Painel Admin"):
+        if st.text_input("Senha Admin", type="password", key="admin_pwd") == "asus2025":
+            st.success("✅ ADMIN LOGADO!")
+            st.subheader("📋 Usuários Pendentes:")
+            pendentes = {e: d for e, d in st.session_state.users.items() if not d["aprovado"]}
+            
+            if not pendentes:
+                st.info("Nenhum usuário pendente.")
+            else:
+                for email, data in pendentes.items():
+                    c1, c2 = st.columns([3, 1])
+                    with c1:
+                        st.write(f"📧 {email}")
+                    with c2:
+                        if st.button("✅ APROVAR", key=email):
+                            st.session_state.users[email]["aprovado"] = True
+                            st.success(f"Aprovado: {email}")
+                            st.rerun()
+
+else:
+    # ==================== ÁREA LOGADA ====================
+    st.sidebar.success(f"✅ Logado: {st.session_state.logado}")
+    if st.sidebar.button("🚪 Sair"):
+        st.session_state.logado = None
+        st.rerun()
+    
+    st.sidebar.divider()
+    
+    # MENU DE NAVEGAÇÃO
+    pagina = st.sidebar.radio(
+        "📊 Escolha o Módulo:",
+        ["🎯 Cálculo Simples", "🔬 Analyzer Pro (Multi-Ativos)"]
+    )
+    
+    # ==================== PÁGINA 1: CÁLCULO SIMPLES ====================
+    if pagina == "🎯 Cálculo Simples":
+        st.title("🎯 ASUS GARCH - Cálculo Simples")
+        st.markdown("**Análise rápida de volatilidade para 1 ativo**")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            ativo = st.text_input("Ativo", "PETR4.SA").upper()
+        with col2:
+            modelo = st.selectbox("Modelo", ["GARCH(1,1)", "EGARCH(1,1)", "GJR-GARCH", "T-Student"])
+        with col3:
+            periodo = st.slider("Dias", 100, 2000, 500)
+
+        if st.button("🚀 CALCULAR VOLATILIDADE", type="primary"):
+            with st.spinner("📊 Baixando dados..."):
+                try:
+                    data = yf.download(ativo, period=f"{periodo}d", progress=False)
+                    df = data["Close"].pct_change().dropna() * 100
+                    scaled = df * 100
+
+                    if "T-Student" in modelo:
+                        vol = scaled.rolling(100).std() * np.sqrt(252)
+                        vol_long = vol.mean() / 100
+                        vol_atual = vol.iloc[-1] / 100
+                        res = None
+                    else:
+                        vol_type = "Garch" if "GARCH" in modelo else "EGarch" if "EGARCH" in modelo else "GJR"
+                        am = arch_model(
+                            scaled, 
+                            dist="normal", 
+                            vol=vol_type, 
+                            p=1, 
+                            o=1 if "GJR" in modelo else 0, 
+                            q=1
+                        )
+                        res = am.fit(disp="off")
+                        unconditional = res.params["omega"] / (
+                            1 - res.params["alpha[1]"] - res.params["beta[1]"] - res.params.get("gamma[1]", 0) / 2
+                        )
+                        vol_long = np.sqrt(unconditional) / 100
+                        vol_atual = np.sqrt(res.conditional_volatility.iloc[-1]) / 100
+
+                    # MÉTRICAS
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("📈 Vol Longo Prazo", f"{vol_long:.4%}")
+                    with col2:
+                        st.metric("📊 Vol Atual", f"{vol_atual:.4%}")
+                    with col3:
+                        delta = (vol_atual / vol_long - 1) * 100
+                        st.metric("📉 Diferença", f"{delta:+.2f}%")
+
+                    # GRÁFICO
+                    fig, ax = plt.subplots(figsize=(12, 6))
+                    if res is not None:
+                        (np.sqrt(res.conditional_volatility.iloc[-200:]) / 100).plot(ax=ax, label="Vol Condicional")
+                    else:
+                        (vol.iloc[-200:] / 100).plot(ax=ax, label="Vol Rolling")
+                    ax.axhline(vol_long, color="red", linestyle="--", label="Vol Longo Prazo")
+                    ax.set_title(f"{modelo} - {ativo}", fontsize=14, fontweight='bold')
+                    ax.set_ylabel("Volatilidade")
+                    ax.legend()
+                    ax.grid(alpha=0.3)
+                    st.pyplot(fig)
+
+                    # DOWNLOAD CSV
+                    csv = data[["Close"]].pct_change().to_csv()
+                    st.download_button("💾 Baixar Retornos CSV", csv, f"{ativo}_retornos.csv")
+                    
+                except Exception as e:
+                    st.error(f"❌ Erro: {e}")
+    
+    # ==================== PÁGINA 2: ANALYZER PRO ====================
+    else:
+        st.title("🔬 GARCH ANALYZER PRO - Multi-Ativos")
+        st.markdown("**Análise comparativa de múltiplos ativos com seleção automática do melhor modelo**")
+        
+        # SIDEBAR - Configurações
+        with st.sidebar:
+            st.subheader("⚙️ Configurações")
+            
+            # Ativos pré-definidos
+            ativos_disponiveis = [
+                'PETR4.SA', 'VALE3.SA', 'ITUB4.SA', 'BBDC4.SA',
+                'MES=F', 'MNQ=F', 'M2K=F', 'MYM=F',
+                'EURUSD=X', 'BRL=X',
+                'NVDA', 'TSLA', 'AAPL', 'MSFT'
+            ]
+            
+            ativos_selecionados = st.multiselect(
+                "📈 Selecione os Ativos:",
+                options=ativos_disponiveis,
+                default=['PETR4.SA', 'VALE3.SA', 'ITUB4.SA']
+            )
+            
+            # Adicionar ativo customizado
+            with st.expander("➕ Adicionar Ativo Customizado"):
+                novo_ativo = st.text_input("Ticker:", placeholder="Ex: AAPL")
+                if st.button("Adicionar") and novo_ativo:
+                    if novo_ativo.upper() not in ativos_selecionados:
+                        ativos_selecionados.append(novo_ativo.upper())
+                        st.success(f"✅ {novo_ativo.upper()} adicionado!")
+            
+            st.divider()
+            
+            # Período
+            st.subheader("📅 Período de Análise")
+            hoje = datetime.today()
+            col1, col2 = st.columns(2)
+            with col1:
+                inicio = st.date_input(
+                    "Início:",
+                    value=(hoje - timedelta(days=365*5)).date(),
+                    max_value=hoje.date()
+                )
+            with col2:
+                fim = st.date_input(
+                    "Fim:",
+                    value=hoje.date(),
+                    max_value=hoje.date()
+                )
+        
+        # Área principal
+        if not ativos_selecionados:
+            st.warning("⚠️ Selecione pelo menos um ativo na barra lateral")
+        else:
+            st.info(f"📊 {len(ativos_selecionados)} ativos selecionados")
+            
+            if st.button("🚀 EXECUTAR ANÁLISE COMPLETA", type="primary", use_container_width=True):
+                
+                inicio_str = inicio.strftime('%Y-%m-%d')
+                fim_str = fim.strftime('%Y-%m-%d')
+                dias_corridos = (fim - inicio).days
+                dias_uteis = np.busday_count(inicio_str, fim_str)
+                
+                st.success(f"⏳ Analisando {len(ativos_selecionados)} ativos de {inicio_str} a {fim_str} ({dias_uteis} dias úteis)")
+                
+                resultados_finais = []
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                # Processar cada ativo
+                for idx, ticker in enumerate(ativos_selecionados):
+                    status_text.text(f"🔄 Processando {ticker}... ({idx + 1}/{len(ativos_selecionados)})")
+                    progress_bar.progress((idx + 1) / len(ativos_selecionados))
+                    
+                    try:
+                        precos = baixar_dados(ticker, inicio_str, fim_str)
+                        retornos = calcular_retornos(precos)
+                        melhor, todos = selecionar_melhor_modelo(retornos, ticker)
+                        
+                        ativo_mt5 = TICKER_MAP.get(ticker, ticker.replace('=X', '').replace('=F', ''))
+                        
+                        resultados_finais.append({
+                            'ativo': ativo_mt5,
+                            'ticker': ticker,
+                            'model_name': melhor['model_name'],
+                            'aic': melhor['aic'],
+                            'lb_p': melhor['lb_p'],
+                            'params': melhor['params']
+                        })
+                        
+                    except Exception as e:
+                        st.error(f"❌ Erro ao processar {ticker}: {e}")
+                
+                status_text.text("✅ Análise concluída!")
+                progress_bar.empty()
+                
+                if not resultados_finais:
+                    st.error("❌ Nenhum resultado válido")
+                else:
+                    # RESULTADOS
+                    st.success(f"✅ Análise concluída com sucesso! {len(resultados_finais)} ativos processados.")
+                    
+                    st.subheader("📊 Resultados dos Modelos")
+                    
+                    df_resultados = []
+                    for r in resultados_finais:
+                        params = extrair_parametros(r['params'])
+                        status = "✅ EXCELENTE" if r['lb_p'] > 0.05 else "⚠️ BOM"
+                        
+                        # Interpretação
+                        regras = []
+                        if r['model_name'].startswith('EGARCH'):
+                            if params['omega'] < -0.5:
+                                regras.append("QUEDAS EXPLODEM VOL")
+                        if params['beta_total'] > 0.98:
+                            regras.append("VOL PERSISTENTE")
+                        if params['alpha_total'] > 0.20:
+                            regras.append("REAÇÃO FORTE")
+                        
+                        interp = " | ".join(regras) if regras else "Estável"
+                        
+                        df_resultados.append({
+                            'Ativo': r['ativo'],
+                            'Modelo': r['model_name'],
+                            'AIC': f"{r['aic']:.1f}",
+                            'LB p-val': f"{r['lb_p']:.3f}",
+                            'Ω (Omega)': f"{params['omega']:.6f}",
+                            'α (Alpha)': f"{params['alpha_total']:.6f}",
+                            'β (Beta)': f"{params['beta_total']:.6f}",
+                            'γ (Gamma)': f"{params['gamma']:.6f}",
+                            'Status': status,
+                            'Interpretação': interp
+                        })
+                    
+                    st.dataframe(pd.DataFrame(df_resultados), use_container_width=True)
+                    
+                    # DOWNLOADS
+                    st.subheader("💾 Exportar Resultados")
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        # CSV MT5
+                        df_csv = gerar_csv_mt5(resultados_finais)
+                        st.download_button(
+                            label="📊 Download CSV para MT5",
+                            data=df_csv.to_csv(index=False, sep=';', encoding='utf-8-sig'),
+                            file_name=f"PARAMETROS-MT5-{datetime.now().strftime('%Y-%m-%d')}.csv",
+                            mime="text/csv",
+                            use_container_width=True
+                        )
+                    
+                    with col2:
+                        # Excel completo
+                        st.download_button(
+                            label="📄 Download Relatório Excel",
+                            data=pd.DataFrame(df_resultados).to_csv(index=False, encoding='utf-8-sig'),
+                            file_name=f"RELATORIO-GARCH-{datetime.now().strftime('%Y-%m-%d')}.csv",
+                            mime="text/csv",
+                            use_container_width=True
+                        )
+                    
+                    # EXPLICAÇÃO
+                    with st.expander("📖 Entenda os Parâmetros"):
+                        st.markdown("""
+                        ### 📐 Parâmetros do Modelo
+                        
+                        **Ω (Omega)** - Volatilidade de longo prazo
+                        - GARCH/GJR: sempre positivo
+                        - EGARCH: pode ser negativo → quedas aumentam vol mais que subidas
+                        
+                        **α (Alpha)** - Impacto de choques recentes
+                        - α alto → volatilidade reage forte a eventos
+                        - Ex: α = 0.341 → 34.1% do choque entra na vol
+                        
+                        **β (Beta)** - Persistência da volatilidade
+                        - β próximo de 1 → vol dura muito tempo
+                        - Ex: β = 0.991 → vol persiste por semanas
+                        
+                        **γ (Gamma)** - Assimetria (efeito alavancagem)
+                        - γ > 0 → más notícias aumentam vol mais que boas
+                        - Presente em: EGARCH e GJR-GARCH
+                        
+                        ### 📊 Critérios de Seleção
+                        
+                        **AIC** (Akaike Information Criterion)
+                        - Quanto MENOR, MELHOR o modelo
+                        - Penaliza complexidade para evitar overfitting
+                        
+                        **LB p-val** (Ljung-Box p-value)
+                        - p-val > 0.05 → modelo válido ✅
+                        - p-val < 0.05 → resíduos com padrão ❌
+                        """)
+    
+    # FOOTER
+    st.divider()
+    st.markdown("**ASUS GARCH PRO 2025** | Feito pelo Grok com carinho pro Asus 💙")
